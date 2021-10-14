@@ -1,16 +1,22 @@
 import pandas as pd
 import re
+import os
 from qa_productivity_tool import nc_full
 
 def test():
     data_cleaner= Data_Cleaner()
-    #data_puller.pull_nc()
+    data_cleaner.pull_nc()
     data_cleaner.open_pipe()
-    #data_cleaner.pull_arch_so()
+    data_cleaner.pull_arch_so()
     data_cleaner.pull_plantstar()
-    #data_cleaner.pull_current_so()
+    data_cleaner.pull_current_so()
 
-protocol = test
+def arch_so_cleanup():
+    data_cleaner = Data_Cleaner()
+    df = data_cleaner.one_hot_cleanup(pd.read_csv('./clean_data/archived_so.csv'))
+    print(df.head())
+
+protocol = arch_so_cleanup
 
 class Data_Cleaner:
     def __init__(self):
@@ -33,17 +39,45 @@ class Data_Cleaner:
         df = df.rename(columns = self.bpcs_col_key)
         print('Checking lot format on archived SOs')
         df['Lot Format Match'] = list(map(self._lot_checker,df['Lot Number']))
-        df = df[df['Lot Format Match'] == 1].drop(columns = 'Lot Format Match')
+        df = df[df['Lot Format Match'] == 1]\
+            .drop(columns = 'Lot Format Match')\
+                .reset_index(drop = True)
+        df['Lot Number'] = df['Lot Number'].astype(str)
+        df['Lot Number'] = list(map(lambda x:x.upper(),df['Lot Number']))
         print(f'archived shop order data shape = {df.shape}')
+        df.to_csv(os.getcwd()+r'\\clean_data'+r'\\archived_so.csv')
         return df
-    
+    def _one_hot_cleanup(self,frame):
+        ''' one hot encoding clean-up function'''
+        frame = frame.reset_index(drop=True)
+        lot_number = frame.loc[0,'Lot Number']
+        product = frame.loc[0,'Product']
+        date = frame.loc[0,'Date']
+        shop_order = str(frame.loc[0,'Shop Order'])
+        df = pd.DataFrame()
+        df.loc[lot_number,'Product'] = product
+        df.loc[lot_number,'Date'] = date
+        df.loc[lot_number,'Shop Order'] = shop_order
+        for i, component in enumerate(frame.Component):
+            df.loc[lot_number,component] = frame.loc[i,'BOM qty']
+        df = df.reset_index()\
+                .rename(columns = {'index':'Lot Number'})
+    def one_hot_cleanup(self,df):
+        list_of_frames = [self._one_hot_cleanup(frame) for lot, frame in df.groupby(by = 'Lot Number')]
+        return pd.concat(list_of_frames)\
+                .fillna(0)\
+                .reset_index(columns = {'index':'Lot Number'})
     def pull_current_so(self):
         print('cleaning Current SO')
         cols = ['MORD','MPROD','MRDTE','MQISS','MAPRD','MBOM','MBOM','MOPNO','SQFIN','MQREQ','SQREQ','SOLOT','SOSTS','Date']
         df = self.dfs['Current SO'][cols]\
                 .rename(columns = self.bpcs_col_key)
-        df = df.drop_duplicates()
+        df = df.drop_duplicates()\
+            .reset_index(drop=True)
+        df['Lot Number'] = df['Lot Number'].astype(str)
+        df['Lot Number'] = list(map(lambda x:x.upper(),df['Lot Number']))
         print(f'Current SO clean shape = {df.shape}')
+        df.to_csv(os.getcwd()+r'\\clean_data'+r'\\current_so.csv')
         return df
     def pull_plantstar(self):
         print('cleaning Plantstar')
@@ -53,15 +87,38 @@ class Data_Cleaner:
         df = self.dfs['Plantstar'][cols]\
                 .rename(columns = col_key)
         df['Shop Order'] = df['Shop Order'].astype(str)
-        df = df[df['Shop Order'].map(len) == 6]
+        df = df[df['Shop Order'].map(len) == 6].reset_index(drop=True)
         print(f'Plantstar clean shape = {df.shape}')
+        df.to_csv(os.getcwd()+r'\\clean_data'+r'\\plantstar.csv')
         return df
     def pull_nc(self):
-        df = nc_full.NC_Full()
-        df.mostrecentreport()
-        df = df.run_report()
-        print(df.head())
+        print('cleaning NC data')
+        ncs = nc_full.NC_Full()
+        ncs.mostrecentreport()
+        df = pd.read_excel(open(ncs.path,'rb'))
+        df = df.iloc[4:]
+        df = df.rename(columns = df.iloc[0,:])\
+                    .drop(4)\
+                    .reset_index(drop=True)\
+                    .dropna(subset=['Product','Lot Number'])
+        
+        df['Product'] = list(map(lambda x: x.split('~')[0],df['Product']))
+        df['Lot Format Match'] = list(map(self._lot_checker,df['Lot Number']))
+        df = df[df['Lot Format Match'] == 1].drop(columns = 'Lot Format Match')
+        cols = ['NC Number','Created Date','NC Type','Discovery/Plant Area','Discovery/Plant Area Name',
+                'Product','Initial Failure Mode','Lot Number','Closed Date']
+        df = df[cols]
+        df['Created Date'] = pd.to_datetime(df['Created Date'],format = '%m/%d/Y')
+        df['Closed Date'] = pd.to_datetime(df['Closed Date'],format = '%m/%d/Y')
+        df['NC TAT'] = (df['Closed Date'] - df['Created Date']).dt.days
+        print(f"unique Lot Numbers with NCs = {len(df['Lot Number'].unique())}")
+        df = df.reset_index(drop = True)
+        df['Lot Number'] = df['Lot Number'].astype(str)
+        df['Lot Number'] = list(map(lambda x:x.upper(),df['Lot Number']))
+        print(f'NC data shape = {df.shape}')
+        df.to_csv(os.getcwd()+r'\\clean_data'+r'\\ncs.csv')
         return df
+
     def _lot_checker(self,lot_number):
         '''checks if lot number matches YYMXXX63 format, 
             returns True or False

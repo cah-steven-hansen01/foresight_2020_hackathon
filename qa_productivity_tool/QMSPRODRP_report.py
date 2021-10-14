@@ -4,7 +4,7 @@ import time
 import datetime as dt
 import numpy as np
 import matplotlib.pyplot as plt
-import CleaningTools as ct
+from CleaningTools import CleaningTools as ct
 import Reference
 from quality_report import Quality_Report
 

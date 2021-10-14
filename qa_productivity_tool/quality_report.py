@@ -21,6 +21,7 @@ class Quality_Report(object):
     def mostrecentreport(self,og_data_path = r"C:\Users\steven.hansen01\Downloads"):
         print(f'Searching for most recent {self.report_name} file ')
         self.og_data_path = og_data_path
+        #self.path = self.og_data_path
         print(self.og_data_path)
         entries = {}
         with os.scandir(self.og_data_path) as it:
@@ -28,11 +29,14 @@ class Quality_Report(object):
                 if entry.name.startswith(self.report_name):
                 #print(entry.name)
                     entries.update({entry.name:[entry.stat().st_ctime,entry.path]})
+        
         for key in entries:
+            
             if entries[key] == max(entries.values()):
                 timepulled = pd.Timestamp(entries[key][0], unit = 's')
                 day,month,year = timepulled.day,timepulled.month,timepulled.year
                 datepulled = str(month)+"/"+str(day)+"/"+str(year)
+                
                 self.r_filename = key
                 self.path = entries[key][1]
                 self.date=datepulled
