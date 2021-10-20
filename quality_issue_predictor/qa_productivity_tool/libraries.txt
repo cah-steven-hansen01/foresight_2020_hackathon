@@ -1,0 +1,5 @@
+pip install pyperclip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+pandas
+xlrd >= 1.0.0
+openpyxl
+matplotlib
